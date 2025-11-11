@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/SpellingBee/static/css/main.15ee573c.css",
-    "main.js": "/SpellingBee/static/js/main.e0321826.js",
+    "main.css": "/SpellingBee/static/css/main.52a6f5e8.css",
+    "main.js": "/SpellingBee/static/js/main.7e3202fe.js",
     "static/js/453.b6c11b23.chunk.js": "/SpellingBee/static/js/453.b6c11b23.chunk.js",
     "index.html": "/SpellingBee/index.html",
-    "main.15ee573c.css.map": "/SpellingBee/static/css/main.15ee573c.css.map",
-    "main.e0321826.js.map": "/SpellingBee/static/js/main.e0321826.js.map",
+    "main.52a6f5e8.css.map": "/SpellingBee/static/css/main.52a6f5e8.css.map",
+    "main.7e3202fe.js.map": "/SpellingBee/static/js/main.7e3202fe.js.map",
     "453.b6c11b23.chunk.js.map": "/SpellingBee/static/js/453.b6c11b23.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.15ee573c.css",
-    "static/js/main.e0321826.js"
+    "static/css/main.52a6f5e8.css",
+    "static/js/main.7e3202fe.js"
   ]
 }
