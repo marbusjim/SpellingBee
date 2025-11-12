@@ -1,0 +1,9 @@
+{
+  "lists": [
+    { "file": "kindergarten.csv", "label": "Kindergarten (Default)" },
+    { "file": "1st_Grade.csv", "label": "1st Grade" },
+    { "file": "2nd_Grade.csv", "label": "2nd Grade" },
+    { "file": "3rd_Grade.csv", "label": "3rd Grade" },
+    { "file": "4th_Grade.csv", "label": "4th Grade" }
+  ]
+}
