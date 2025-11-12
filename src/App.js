@@ -297,13 +297,13 @@ const SpellingBeeGame = () => {
   };
 
   // Reproducir palabra completa
-  const playWordPronunciation = () => {
+  const playWordPronunciation = React.useCallback(() => {
     if ('speechSynthesis' in window && currentWord) {
       const utterance = new SpeechSynthesisUtterance(currentWord);
       utterance.lang = 'en-US'; // Set the language to English (US)
       speechSynthesis.speak(utterance);
     }
-  };
+  }, [currentWord]);
 
   // Reproducir letra al hacer click
   const speakLetter = (letter) => {
