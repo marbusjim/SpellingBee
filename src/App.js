@@ -1,151 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Play, ArrowRight, Star } from 'lucide-react';
 import './output.css'
 
-const SpellingBeeGame = () => {
-  const staticWordList =
-    [
-      'Away',
-      'Baby',
-      'Bark',
-      'Bite',
-      'Blue',
-      'Black',
-      'Bone',
-      'Bowl',
-      'Brown',
-      'Cake',
-      'Camp',
-      'Chat',
-      'Chair',
-      'Clip',
-      'Club',
-      'Corn',
-      'Cute',
-      'Duck',
-      'Easy',
-      'Fair',
-      'Fast',
-      'Fire',
-      'Fish',
-      'Food',
-      'Game',
-      'Gift',
-      'Good',
-      'Ice',
-      'Iron',
-      'Jump',
-      'List',
-      'Lost',
-      'Mask',
-      'Move',
-      'Name',
-      'Neck',
-      'Park',
-      'Play',
-      'Rain',
-      'Salt',
-      'Shop',
-      'Shirt',
-      'Sing',
-      'Slow',
-      'Song',
-      'Star',
-      'Step',
-      'Store',
-      'Table',
-      'Task',
-      'Team',
-      'Time',
-      'Turn',
-      'Wave',
-      'Warm',
-      'Work',
-      'Yarn',
-      'Zone',
-      'After',
-      'Apple',
-      'Bread',
-      'Cloud',
-      'Dance',
-      'Earth',
-      'Glove',
-      'Heart',
-      'House',
-      'Lemon',
-      'Mango',
-      'Mouth',
-      'Night',
-      'Piano',
-      'Pink',
-      'Plant',
-      'Paint',
-      'Race',
-      'Shoe',
-      'Skirt',
-      'Sugar',
-      'Swing',
-      'Sweet',
-      'Tasty',
-      'Voice',
-      'White',
-      'World',
-      'Story',
-      'Sleep',
-      'Shape',
-      'Smile',
-      'Crown',
-      'Kite',
-      'Label',
-      'Peach',
-      'Vowel',
-      'Brave',
-      'Candy',
-      'Clear',
-      'Dream',
-      'Knees',
-      'Lunar',
-      'March',
-      'Power',
-      'Rocks',
-      'Vocal',
-      'Word',
-      'Yellow',
-      'Zebra',
-      'Boats',
-      'Mine',
-      'Nice',
-      'Push',
-      'Water',
-      'blank',
-      'frost',
-      'print',
-      'stamp',
-      'trust',
-      'Alert',
-      'Chill',
-      'Crack',
-      'Dive',
-      'Dust',
-      'Flash',
-      'Hint',
-      'Hope',
-      'Lamp',
-      'Melt',
-      'Nest',
-      'Shut',
-      'Slice',
-      'Spin',
-      'Tail',
-      'Tear',
-      'April',
-      'June',
-      'July'
-    ];
+// Precarga ligera de referencias: mapeamos nombres (en minúsculas) a la ruta compilada usando require.context.
+// Esto evita tener que mover los archivos a public y funciona con los nombres en minúsculas existentes.
+const importAll = (r) => {
+  const images = {};
+  r.keys().forEach((key) => {
+    const cleanKey = key.replace('./', '').replace(/\.(png|jpg|jpeg)$/i, '');
+    images[cleanKey.toLowerCase()] = r(key);
+  });
+  return images;
+};
+// Carga todas las .png dentro de src/images (sin subdirectorios)
+const localImages = importAll(require.context('./images', false, /\.(png|jpg|jpeg)$/i));
 
-  const [wordList, setWordList] = useState(staticWordList);
+const SpellingBeeGame = () => {
+  const [wordList, setWordList] = useState([]);
+  const [translationsMap, setTranslationsMap] = useState({});
   const [currentWord, setCurrentWord] = useState(null);
   const [currentTranslateWord, setCurrentTraslateWord] = useState(null);
   const [score, setScore] = useState(0);
@@ -153,170 +28,136 @@ const SpellingBeeGame = () => {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageRendered, setImageRendered] = useState(false);
   const [pendingSpeak, setPendingSpeak] = useState(false);
+  const [availableLists, setAvailableLists] = useState([]);
+  const [selectedListFile, setSelectedListFile] = useState('words.csv');
+  const [loadingList, setLoadingList] = useState(false);
 
   // Función para traducir palabra usando Google Translate API (gratuita) con traducciones más simples para niños
   const translateWord = async (word) => {
+    // Ahora usamos el mapa cargado desde CSV. Fallback a la misma palabra si falta.
+    return translationsMap[word] || word;
+  };
+
+  // Parse CSV / SVC generically
+  const parseDelimited = (text) => {
+    const lines = text.trim().split(/\r?\n/);
+    if (!lines.length) return { words: [], map: {} };
+    const header = lines[0].toLowerCase().split(',');
+    const wordIdx = header.indexOf('word');
+    const transIdx = header.indexOf('translation');
+    if (wordIdx === -1 || transIdx === -1) {
+      console.error('Encabezados inválidos, se esperaba word,translation');
+      return { words: [], map: {} };
+    }
+    const map = {};
+    const words = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      const parts = line.split(',');
+      const w = (parts[wordIdx] || '').trim();
+      const t = (parts[transIdx] || '').trim();
+      if (!w) continue;
+      words.push(w);
+      map[w] = t || w;
+    }
+    return { words, map };
+  };
+
+  // Cargar Excel (.xlsx) con columnas: word/palabra, translation/traduccion
+  const loadWordsFromExcel = async (file) => {
     try {
-      // Primero intentamos con un diccionario simple para niños
-      const simpleTranslations = {
-        'Away': 'Lejos',
-        'Baby': 'Bebé',
-        'Bark': 'Ladrar',
-        'Bite': 'Morder',
-        'Blue': 'Azul',
-        'Black': 'Negro',
-        'Bone': 'Hueso',
-        'Bowl': 'Tazón',
-        'Brown': 'Marrón',
-        'Cake': 'Pastel',
-        'Camp': 'Campamento',
-        'Chat': 'Charlar',
-        'Chair': 'Silla',
-        'Clip': 'Clip',
-        'Club': 'Club',
-        'Corn': 'Maíz',
-        'Cute': 'Lindo',
-        'Duck': 'Pato',
-        'Easy': 'Fácil',
-        'Fair': 'Justo',
-        'Fast': 'Rápido',
-        'Fire': 'Fuego',
-        'Fish': 'Pez',
-        'Food': 'Comida',
-        'Game': 'Juego',
-        'Gift': 'Regalo',
-        'Good': 'Bueno',
-        'Ice': 'Hielo',
-        'Iron': 'Plancha',
-        'Jump': 'Saltar',
-        'List': 'Lista',
-        'Lost': 'Perdido',
-        'Mask': 'Máscara',
-        'Move': 'Mover',
-        'Name': 'Nombre',
-        'Neck': 'Cuello',
-        'Park': 'Parque',
-        'Play': 'Jugar',
-        'Rain': 'Lluvia',
-        'Salt': 'Sal',
-        'Shop': 'Tienda',
-        'Shirt': 'Camisa',
-        'Sing': 'Cantar',
-        'Slow': 'Lento',
-        'Song': 'Canción',
-        'Star': 'Estrella',
-        'Step': 'Paso',
-        'Store': 'Tienda',
-        'Table': 'Mesa',
-        'Task': 'Tarea',
-        'Team': 'Equipo',
-        'Time': 'Tiempo',
-        'Turn': 'Girar',
-        'Wave': 'Ola',
-        'Warm': 'Cálido',
-        'Work': 'Trabajo',
-        'Yarn': 'Hilo',
-        'Zone': 'Zona',
-        'After': 'Después',
-        'Apple': 'Manzana',
-        'Bread': 'Pan',
-        'Cloud': 'Nube',
-        'Dance': 'Bailar',
-        'Earth': 'Tierra',
-        'Glove': 'Guante',
-        'Heart': 'Corazón',
-        'House': 'Casa',
-        'Lemon': 'Limón',
-        'Mango': 'Mango',
-        'Mouth': 'Boca',
-        'Night': 'Noche',
-        'Piano': 'Piano',
-        'Pink': 'Rosa',
-        'Plant': 'Planta',
-        'Paint': 'Pintura',
-        'Race': 'Carrera',
-        'Shoe': 'Zapato',
-        'Skirt': 'Falda',
-        'Sugar': 'Azúcar',
-        'Swing': 'Columpio',
-        'Sweet': 'Dulce',
-        'Tasty': 'Sabroso',
-        'Voice': 'Voz',
-        'White': 'Blanco',
-        'World': 'Mundo',
-        'Story': 'Historia',
-        'Sleep': 'Dormir',
-        'Shape': 'Forma',
-        'Smile': 'Sonrisa',
-        'Crown': 'Corona',
-        'Kite': 'Cometa',
-        'Label': 'Etiqueta',
-        'Peach': 'Durazno',
-        'Vowel': 'Vocal',
-        'Brave': 'Valiente',
-        'Candy': 'Dulce',
-        'Clear': 'Claro',
-        'Dream': 'Sueño',
-        'Knees': 'Rodillas',
-        'Lunar': 'Lunar',
-        'March': 'Marzo',
-        'Power': 'Poder',
-        'Rocks': 'Rocas',
-        'Vocal': 'Vocal',
-        'Word': 'Palabra',
-        'Yellow': 'Amarillo',
-        'Zebra': 'Cebra',
-        'Boats': 'Barcos',
-        'Mine': 'Mío',
-        'Nice': 'Bonito',
-        'Push': 'Empujar',
-        'Water': 'Agua',
-        'blank': 'En blanco',
-        'frost': 'Escarcha',
-        'print': 'Imprimir',
-        'stamp': 'Sello',
-        'trust': 'Confianza',
-        'Alert': 'Alerta',
-        'Chill': 'Frío',
-        'Crack': 'Grieta',
-        'Dive': 'Bucear',
-        'Dust': 'Polvo',
-        'Flash': 'Flash',
-        'Hint': 'Pista',
-        'Hope': 'Esperanza',
-        'Lamp': 'Lámpara',
-        'Melt': 'Derretir',
-        'Nest': 'Nido',
-        'Shut': 'Cerrar',
-        'Slice': 'Rebanada',
-        'Spin': 'Girar',
-        'Tail': 'Cola',
-        'Tear': 'Lágrima',
-        'April': 'Abril',
-        'June': 'Junio',
-        'July': 'Julio'
-      };
-
-      // Si tenemos una traducción simple para niños, la usamos
-      if (simpleTranslations[word]) {
-        return simpleTranslations[word];
+      const res = await fetch((process.env.PUBLIC_URL || '') + '/files/' + file);
+      if (!res.ok) return false;
+      const ab = await res.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if (!rows || rows.length === 0) return false;
+      const headerRow = rows[0].map((h) => String(h || '').toLowerCase());
+      // Soportar tanto inglés como español en encabezados
+      const wordIdx = headerRow.findIndex((h) => h === 'word' || h === 'palabra');
+      const transIdx = headerRow.findIndex((h) => h === 'translation' || h === 'traduccion' || h === 'traducción');
+      if (wordIdx === -1 || transIdx === -1) {
+        console.error('Encabezados no encontrados en Excel. Esperado: word/palabra, translation/traduccion');
+        return false;
       }
+      const map = {};
+      const words = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+        const w = String(row[wordIdx] || '').trim();
+        if (!w) continue;
+        const t = String(row[transIdx] || '').trim();
+        words.push(w);
+        map[w] = t || w;
+      }
+      if (words.length > 0) {
+        setTranslationsMap(map);
+        setWordList(words);
+        await selectRandomWord(words);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Error cargando Excel:', err);
+      return false;
+    }
+  };
 
-      // Si no, intentamos con Google Translate API gratuita
-      const response = await fetch(
-        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURIComponent(word)}`
-      );
-      const data = await response.json();
-      
-      if (data && data[0] && data[0][0] && data[0][0][0]) {
-        return data[0][0][0];
+  // Cargar lista según archivo seleccionado (csv/svc/xlsx)
+  const loadListByFile = async (file) => {
+    setLoadingList(true);
+    setCurrentWord(null);
+    setCurrentTraslateWord(null);
+    setScore(0);
+    try {
+      if (file.toLowerCase().endsWith('.xlsx')) {
+        const ok = await loadWordsFromExcel(file);
+        if (!ok) console.error('No se pudo cargar Excel:', file);
+      } else { // csv o svc
+        const res = await fetch((process.env.PUBLIC_URL || '') + '/files/' + file);
+        if (!res.ok) {
+          console.error('Archivo no encontrado:', file);
+          return;
+        }
+        const text = await res.text();
+        const { words, map } = parseDelimited(text);
+        setTranslationsMap(map);
+        setWordList(words);
+        if (words.length) await selectRandomWord(words);
+      }
+    } catch (e) {
+      console.error('Error cargando lista', file, e);
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  // Cargar manifest.json para obtener nombres de listas
+  const loadManifest = async () => {
+    try {
+      const res = await fetch((process.env.PUBLIC_URL || '') + '/files/manifest.json');
+      if (!res.ok) {
+        console.warn('manifest.json no encontrado, usando lista por defecto');
+        setAvailableLists([{ file: 'words.csv', label: 'Default Words' }]);
+        return;
+      }
+      const data = await res.json();
+      if (Array.isArray(data.lists)) {
+        setAvailableLists(data.lists);
+        // Si la lista seleccionada no está, elegir la primera
+        const exists = data.lists.some(l => l.file === selectedListFile);
+        if (!exists && data.lists.length) {
+          setSelectedListFile(data.lists[0].file);
+        }
       } else {
-        // Fallback: retornar la palabra original si no se puede traducir
-        return word;
+        setAvailableLists([{ file: 'words.csv', label: 'Default Words' }]);
       }
-    } catch (error) {
-      console.error("Error translating word:", error);
-      return word; // Fallback
+    } catch (e) {
+      console.error('Error cargando manifest:', e);
+      setAvailableLists([{ file: 'words.csv', label: 'Default Words' }]);
     }
   };
 
@@ -324,69 +165,73 @@ const SpellingBeeGame = () => {
   const fetchWordImage = async (word) => {
     setImageRendered(false);
     setImageLoading(true);
-    // 0) Manejo especial para colores y formas simples
-    const colorMap = {
-      'Blue': '#42A5F5',
-      'Black': '#333333',
-      'Pink': '#FF80AB',
-      'White': '#FFFFFF',
-      'Yellow': '#FFEB3B',
-      'Brown': '#8D6E63',
-    };
-    const shapeWords = ['Star', 'Heart', 'Apple', 'Duck', 'Fish', 'Boat', 'Boats'];
-    if (colorMap[word]) {
-      setWordImage(generateColorPlaceholder(word, colorMap[word]));
-      setImageLoading(false);
-      return;
-    }
-    if (shapeWords.includes(word)) {
-      setWordImage(generateShapePlaceholder(word));
-      setImageLoading(false);
-      return;
-    }
-    // 1) Intento con Wikipedia (muy relevante para sustantivos comunes)
-    const fetchFromWikipedia = async (q) => {
-      try {
-        // Buscar el mejor título
-        const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`);
-        const searchData = await searchRes.json();
-        const title = searchData?.query?.search?.[0]?.title || q;
-
-        // Obtener resumen con miniatura
-        const summaryRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`);
-        const summary = await summaryRes.json();
-        if (summary?.thumbnail?.source) return summary.thumbnail.source;
-        if (summary?.originalimage?.source) return summary.originalimage.source;
-        return null;
-      } catch {
-        return null;
-      }
-    };
-
-    // 2) Intento con Openverse (Creative Commons, con filtro de contenido maduro)
-    const fetchFromOpenverse = async (q) => {
-      try {
-        const res = await fetch(`https://api.openverse.engineering/v1/images/?q=${encodeURIComponent(q + ' cartoon illustration')}&page_size=10&mature=false&license_type=all`);
-        const data = await res.json();
-        const results = data?.results?.filter(r => r?.mature === false) || [];
-        if (results.length > 0) {
-          // Preferir miniatura si existe
-          const choice = results.find(r => r?.thumbnail) || results[0];
-          return choice?.thumbnail || choice?.url || null;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    };
-
     try {
-      let url = await fetchFromWikipedia(word);
+      const key = word.toLowerCase();
+      const candidate = localImages[key];
+      if (candidate) {
+        setWordImage(candidate);
+        return;
+      }
+
+      // Fallback 1: Wikimedia Commons (archivos "File:" con miniatura)
+      const fetchFromCommons = async (q) => {
+        try {
+          const search = `${q} cartoon clipart illustration kid`;
+          const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(search)}&gsrlimit=1&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=512&format=json&origin=*`;
+          const res = await fetch(url);
+          const data = await res.json();
+          const pages = data?.query?.pages;
+          if (pages) {
+            const first = Object.values(pages)[0];
+            const info = first?.imageinfo?.[0];
+            if (info?.thumburl) return info.thumburl;
+            if (info?.url) return info.url;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
+      // Fallback 2: Wikipedia (buscar miniatura u original)
+      const fetchFromWikipedia = async (q) => {
+        try {
+          const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`);
+          const searchData = await searchRes.json();
+          const title = searchData?.query?.search?.[0]?.title || q;
+          const summaryRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`);
+          const summary = await summaryRes.json();
+          if (summary?.thumbnail?.source) return summary.thumbnail.source;
+          if (summary?.originalimage?.source) return summary.originalimage.source;
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
+      // Fallback 3: Openverse (Creative Commons, sin contenido maduro)
+      const fetchFromOpenverse = async (q) => {
+        try {
+          const res = await fetch(`https://api.openverse.engineering/v1/images/?q=${encodeURIComponent(q + ' cartoon illustration')}&page_size=10&mature=false&license_type=all`);
+          const data = await res.json();
+          const results = data?.results?.filter(r => r?.mature === false) || [];
+          if (results.length > 0) {
+            const choice = results.find(r => r?.thumbnail) || results[0];
+            return choice?.thumbnail || choice?.url || null;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
+      let url = await fetchFromCommons(word);
+      if (!url) url = await fetchFromWikipedia(word);
       if (!url) url = await fetchFromOpenverse(word);
       if (!url) url = generatePlaceholder(word);
       setWordImage(url);
-    } catch (error) {
-      console.error('Error fetching image:', error);
+    } catch (e) {
+      console.warn('Error resolviendo imagen local, usando placeholder:', word, e);
       setWordImage(generatePlaceholder(word));
     } finally {
       setImageLoading(false);
@@ -574,11 +419,19 @@ const SpellingBeeGame = () => {
 
   // Iniciar automáticamente al montar
   useEffect(() => {
-    if (!currentWord) {
-      selectRandomWord(wordList);
-    }
+    // Al montar obtener manifest y luego cargar lista seleccionada
+    (async () => {
+      await loadManifest();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (selectedListFile) {
+      loadListByFile(selectedListFile);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedListFile]);
 
   // Cuando se hizo click en Siguiente y la imagen ya se renderizó, reproducir la palabra
   useEffect(() => {
@@ -602,6 +455,21 @@ const SpellingBeeGame = () => {
         <div className="space-y-4">
           {/* Barra de acciones simplificada */}
           <div className="action-bar">
+            {/* Selector de lista de palabras */}
+            <label className="kid-select-label" htmlFor="listSelect">Lista</label>
+            <div className="flex justify-center mb-2">
+              <select
+                id="listSelect"
+                className="kid-select"
+                value={selectedListFile}
+                onChange={(e) => setSelectedListFile(e.target.value)}
+                disabled={loadingList}
+              >
+                {availableLists.map(l => (
+                  <option key={l.file} value={l.file}>{l.label}</option>
+                ))}
+              </select>
+            </div>
             <div className="action-row">
               <Button
                 onClick={playWordPronunciation}
