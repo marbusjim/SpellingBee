@@ -267,96 +267,6 @@ const SpellingBeeGame = () => {
     return canvas.toDataURL('image/png');
   };
 
-  // Placeholder específico para colores
-  const generateColorPlaceholder = (label, hex) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0,0,400,300);
-    // círculo de color
-    ctx.beginPath();
-    ctx.fillStyle = hex;
-    ctx.arc(200, 140, 80, 0, Math.PI*2);
-    ctx.fill();
-    // borde bonito
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-    ctx.stroke();
-    // texto
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 44px "Baloo 2", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, 200, 260);
-    return canvas.toDataURL('image/png');
-  };
-
-  // Placeholder simple para formas/objetos comunes
-  const generateShapePlaceholder = (label) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 300;
-    const ctx = canvas.getContext('2d');
-    // fondo
-    const grad = ctx.createLinearGradient(0,0,400,300);
-    grad.addColorStop(0,'#E1F5FE');
-    grad.addColorStop(1,'#FFECB3');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0,0,400,300);
-    // dibujar figura
-    ctx.fillStyle = '#FF7043';
-    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-    ctx.lineWidth = 6;
-    if (label === 'Star') {
-      const cx=200, cy=140, outer=80, inner=35;
-      ctx.beginPath();
-      for (let i=0;i<10;i++){
-        const angle = Math.PI/5 * i - Math.PI/2;
-        const r = i%2===0 ? outer : inner;
-        const x = cx + r*Math.cos(angle);
-        const y = cy + r*Math.sin(angle);
-        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    } else if (label === 'Heart') {
-      ctx.beginPath();
-      ctx.moveTo(200, 210);
-      ctx.bezierCurveTo(120,140,120,80,180,90);
-      ctx.bezierCurveTo(200,95,215,110,200,130);
-      ctx.bezierCurveTo(185,110,200,95,220,90);
-      ctx.bezierCurveTo(280,80,280,140,200,210);
-      ctx.fill();
-      ctx.stroke();
-    } else if (label === 'Apple') {
-      ctx.beginPath();
-      ctx.arc(175,150,50,0,Math.PI*2);
-      ctx.arc(225,150,50,0,Math.PI*2);
-      ctx.fill();
-      ctx.stroke();
-      // hoja
-      ctx.fillStyle = '#66BB6A';
-      ctx.beginPath();
-      ctx.ellipse(210,95,18,10,Math.PI/6,0,Math.PI*2);
-      ctx.fill();
-    } else if (label === 'Duck' || label === 'Fish' || label === 'Boat' || label === 'Boats') {
-      ctx.fillStyle = '#29B6F6';
-      ctx.beginPath();
-      ctx.moveTo(120,190);
-      ctx.quadraticCurveTo(200,120,280,190);
-      ctx.lineTo(120,190);
-      ctx.fill();
-      ctx.stroke();
-    }
-    // texto
-    ctx.fillStyle = '#3E2723';
-    ctx.font = 'bold 42px "Baloo 2", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, 200, 265);
-    return canvas.toDataURL('image/png');
-  };
 
   // // Cargar lista de palabras
   // const handleWordListUpload = (event) => {
@@ -439,7 +349,7 @@ const SpellingBeeGame = () => {
       playWordPronunciation();
       setPendingSpeak(false);
     }
-  }, [pendingSpeak, imageRendered, currentWord]);
+  }, [pendingSpeak, imageRendered, currentWord, playWordPronunciation]);
 
 
   return (
