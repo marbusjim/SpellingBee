@@ -1,22 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Play, ArrowRight, Star } from 'lucide-react';
 import './output.css'
 
-// Precarga ligera de referencias: mapeamos nombres (en minúsculas) a la ruta compilada usando require.context.
+// Precarga ligera de referencias: mapeamos nombres (en minúsculas) a la ruta compilada usando import.meta.glob.
 // Esto evita tener que mover los archivos a public y funciona con los nombres en minúsculas existentes.
-const importAll = (r) => {
-  const images = {};
-  r.keys().forEach((key) => {
-    const cleanKey = key.replace('./', '').replace(/\.(png|jpg|jpeg)$/i, '');
-    images[cleanKey.toLowerCase()] = r(key);
+const imageModules = import.meta.glob('./images/*.{png,jpg,jpeg}');
+const localImages = {};
+for (const path in imageModules) {
+  const cleanKey = path.replace('./images/', '').replace(/\.(png|jpg|jpeg)$/i, '');
+  // Vite's import.meta.glob returns a function that returns the module (async)
+  imageModules[path]().then((mod) => {
+    localImages[cleanKey.toLowerCase()] = mod.default;
   });
-  return images;
-};
-// Carga todas las .png dentro de src/images (sin subdirectorios)
-const localImages = importAll(require.context('./images', false, /\.(png|jpg|jpeg)$/i));
+}
 
 const SpellingBeeGame = () => {
   const [wordList, setWordList] = useState([]);
@@ -64,70 +63,35 @@ const SpellingBeeGame = () => {
     return { words, map };
   };
 
-  // Cargar Excel (.xlsx) con columnas: word/palabra, translation/traduccion
-  const loadWordsFromExcel = async (file) => {
-    try {
-      const res = await fetch((process.env.PUBLIC_URL || '') + '/files/' + file);
-      if (!res.ok) return false;
-      const ab = await res.arrayBuffer();
-      const wb = XLSX.read(ab, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      if (!rows || rows.length === 0) return false;
-      const headerRow = rows[0].map((h) => String(h || '').toLowerCase());
-      // Soportar tanto inglés como español en encabezados
-      const wordIdx = headerRow.findIndex((h) => h === 'word' || h === 'palabra');
-      const transIdx = headerRow.findIndex((h) => h === 'translation' || h === 'traduccion' || h === 'traducción');
-      if (wordIdx === -1 || transIdx === -1) {
-        console.error('Encabezados no encontrados en Excel. Esperado: word/palabra, translation/traduccion');
-        return false;
-      }
-      const map = {};
-      const words = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.length === 0) continue;
-        const w = String(row[wordIdx] || '').trim();
-        if (!w) continue;
-        const t = String(row[transIdx] || '').trim();
-        words.push(w);
-        map[w] = t || w;
-      }
-      if (words.length > 0) {
-        setTranslationsMap(map);
-        setWordList(words);
-        await selectRandomWord(words);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Error cargando Excel:', err);
-      return false;
-    }
-  };
 
-  // Cargar lista según archivo seleccionado (csv/svc/xlsx)
+
+  // Cargar lista desde archivo CSV usando papaparse
   const loadListByFile = async (file) => {
     setLoadingList(true);
     setCurrentWord(null);
     setCurrentTraslateWord(null);
     setScore(0);
     try {
-      if (file.toLowerCase().endsWith('.xlsx')) {
-        const ok = await loadWordsFromExcel(file);
-        if (!ok) console.error('No se pudo cargar Excel:', file);
-      } else { // csv o svc
-        const res = await fetch((process.env.PUBLIC_URL || '') + '/files/' + file);
-        if (!res.ok) {
-          console.error('Archivo no encontrado:', file);
-          return;
-        }
-        const text = await res.text();
-        const { words, map } = parseDelimited(text);
-        setTranslationsMap(map);
-        setWordList(words);
-        if (words.length) await selectRandomWord(words);
+  const res = await fetch('/files/' + file);
+      if (!res.ok) {
+        console.error('Archivo no encontrado:', file);
+        return;
       }
+      const text = await res.text();
+      const parsed = Papa.parse(text, { header: true });
+      const map = {};
+      const words = [];
+      parsed.data.forEach(row => {
+        const w = (row.word || row.palabra || '').trim();
+        const t = (row.translation || row.traduccion || row.traducción || '').trim();
+        if (w) {
+          words.push(w);
+          map[w] = t || w;
+        }
+      });
+      setTranslationsMap(map);
+      setWordList(words);
+      if (words.length) await selectRandomWord(words);
     } catch (e) {
       console.error('Error cargando lista', file, e);
     } finally {
@@ -138,7 +102,7 @@ const SpellingBeeGame = () => {
   // Cargar manifest.json para obtener nombres de listas
   const loadManifest = async () => {
     try {
-      const res = await fetch((process.env.PUBLIC_URL || '') + '/files/manifest.json');
+      const res = await fetch('/files/manifest.json');
       if (!res.ok) {
         console.warn('manifest.json no encontrado, usando lista por defecto');
         setAvailableLists([{ file: 'words.csv', label: 'Default Words' }]);
@@ -162,6 +126,7 @@ const SpellingBeeGame = () => {
   };
 
   // Búsqueda de imagen con fuentes más relevantes y libres (Wikipedia + Openverse)
+  // Búsqueda de imagen con fuentes más relevantes y libres (Wikipedia y Wikimedia Commons)
   const fetchWordImage = async (word) => {
     setImageRendered(false);
     setImageLoading(true);
@@ -170,68 +135,10 @@ const SpellingBeeGame = () => {
       const candidate = localImages[key];
       if (candidate) {
         setWordImage(candidate);
-        return;
+      } else {
+        setWordImage(generatePlaceholder(word));
       }
-
-      // Fallback 1: Wikimedia Commons (archivos "File:" con miniatura)
-      const fetchFromCommons = async (q) => {
-        try {
-          const search = `${q} cartoon clipart illustration kid`;
-          const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(search)}&gsrlimit=1&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=512&format=json&origin=*`;
-          const res = await fetch(url);
-          const data = await res.json();
-          const pages = data?.query?.pages;
-          if (pages) {
-            const first = Object.values(pages)[0];
-            const info = first?.imageinfo?.[0];
-            if (info?.thumburl) return info.thumburl;
-            if (info?.url) return info.url;
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      };
-
-      // Fallback 2: Wikipedia (buscar miniatura u original)
-      const fetchFromWikipedia = async (q) => {
-        try {
-          const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`);
-          const searchData = await searchRes.json();
-          const title = searchData?.query?.search?.[0]?.title || q;
-          const summaryRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}?redirect=true`);
-          const summary = await summaryRes.json();
-          if (summary?.thumbnail?.source) return summary.thumbnail.source;
-          if (summary?.originalimage?.source) return summary.originalimage.source;
-          return null;
-        } catch {
-          return null;
-        }
-      };
-
-      // Fallback 3: Openverse (Creative Commons, sin contenido maduro)
-      const fetchFromOpenverse = async (q) => {
-        try {
-          const res = await fetch(`https://api.openverse.engineering/v1/images/?q=${encodeURIComponent(q + ' cartoon illustration')}&page_size=10&mature=false&license_type=all`);
-          const data = await res.json();
-          const results = data?.results?.filter(r => r?.mature === false) || [];
-          if (results.length > 0) {
-            const choice = results.find(r => r?.thumbnail) || results[0];
-            return choice?.thumbnail || choice?.url || null;
-          }
-          return null;
-        } catch {
-          return null;
-        }
-      };
-
-      let url = await fetchFromCommons(word);
-      if (!url) url = await fetchFromWikipedia(word);
-      if (!url) url = await fetchFromOpenverse(word);
-      if (!url) url = generatePlaceholder(word);
-      setWordImage(url);
     } catch (e) {
-      console.warn('Error resolviendo imagen local, usando placeholder:', word, e);
       setWordImage(generatePlaceholder(word));
     } finally {
       setImageLoading(false);
